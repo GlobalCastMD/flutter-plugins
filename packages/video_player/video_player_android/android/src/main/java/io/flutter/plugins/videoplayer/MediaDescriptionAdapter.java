@@ -19,54 +19,76 @@ import com.google.android.exoplayer2.ui.PlayerNotificationManager;
 import org.jetbrains.annotations.NotNull;
 
 public class MediaDescriptionAdapter implements PlayerNotificationManager.MediaDescriptionAdapter {
-    @Nullable
-    private final PendingIntent pendingIntent;
 
     private final Context context;
+    private final VideoMetadata metadata;
 
     /**
      * Creates a default {@link PlayerNotificationManager.MediaDescriptionAdapter}.
      *
-     * @param pendingIntent The {@link PendingIntent} to be returned from {@link
-     *     #createCurrentContentIntent(Player)}, or null if no intent should be fired.
+     * @param context The {@link Context} to be passed to Glide for loading a remote thumbnail.
+     * @param metadata The {@link VideoMetadata} that holds the information to display
+     *                 in the media notification
      */
-    public MediaDescriptionAdapter(@NotNull Context context, @Nullable PendingIntent pendingIntent) {
-        this.pendingIntent = pendingIntent;
+    public MediaDescriptionAdapter(@NotNull Context context, @NotNull VideoMetadata metadata) {
         this.context = context;
+        this.metadata = metadata;
     }
 
     @Override
     public CharSequence getCurrentContentTitle(Player player) {
-        return "Testing Title"; // TODO
+        return metadata.getTitle();
     }
 
     @Nullable
     @Override
     public PendingIntent createCurrentContentIntent(Player player) {
-        return pendingIntent;
+        // TODO is this needed to open the app from tapping the notification?
+        return null;
     }
 
     @Nullable
     @Override
     public CharSequence getCurrentContentText(Player player) {
-        return "Testing Subtitle"; // TODO
+        return metadata.getSubtitle();
     }
 
     @Nullable
     @Override
     public Bitmap getCurrentLargeIcon(Player player, PlayerNotificationManager.BitmapCallback callback) {
-        Glide.with(context)
-                .asBitmap() // TODO
-                .load("https://target.scene7.com/is/image/Target/GUEST_02ea766d-006c-4ae7-a099-b40c6aaeffbd?wid=488&hei=488&fmt=pjpeg")
-                .into(new CustomTarget<Bitmap>() {
-                    @Override
-                    public void onResourceReady(@NonNull Bitmap resource, @Nullable Transition<? super Bitmap> transition) {
-                        callback.onBitmap(resource);
-                    }
-                    @Override
-                    public void onLoadCleared(@Nullable Drawable placeholder) {
-                    }
-                });
+        if (metadata.getThumbnailBytes() != null && metadata.getThumbnailBytes().length > 0) {
+            Glide.with(context)
+                    .asBitmap()
+                    .load(metadata.getThumbnailBytes())
+                    .into(new CustomTarget<Bitmap>() {
+                        @Override
+                        public void onResourceReady(@NonNull Bitmap resource, @Nullable Transition<? super Bitmap> transition) {
+                            callback.onBitmap(resource);
+                        }
+                        @Override
+                        public void onLoadCleared(@Nullable Drawable placeholder) {
+                        }
+                    });
+            return null;
+        }
+
+        if (metadata.getThumbnailUri() != null && metadata.getThumbnailUri().length() > 0) {
+
+            Glide.with(context)
+                    .asBitmap()
+                    .load(metadata.getThumbnailUri())
+                    .into(new CustomTarget<Bitmap>() {
+                        @Override
+                        public void onResourceReady(@NonNull Bitmap resource, @Nullable Transition<? super Bitmap> transition) {
+                            callback.onBitmap(resource);
+                        }
+                        @Override
+                        public void onLoadCleared(@Nullable Drawable placeholder) {
+                        }
+                    });
+            return null;
+        }
+
         return null;
     }
 }

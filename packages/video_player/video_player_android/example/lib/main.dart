@@ -5,6 +5,8 @@
 // ignore_for_file: public_member_api_docs
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 import 'mini_controller.dart';
 
@@ -16,7 +18,25 @@ void main() {
   );
 }
 
-class _App extends StatelessWidget {
+class _App extends StatefulWidget {
+  @override
+  State<_App> createState() => _AppState();
+}
+
+class _AppState extends State<_App> {
+
+  late final Future<Uint8List> loadAssetBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    loadAssetBytes = loadImage();
+  }
+
+  Future<Uint8List> loadImage() async {
+    return (await rootBundle.load('assets/d20.jpeg')).buffer.asUint8List();
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -39,7 +59,19 @@ class _App extends StatelessWidget {
         body: TabBarView(
           children: <Widget>[
             _BumbleBeeRemoteVideo(),
-            _ButterFlyAssetVideo(),
+            FutureBuilder<Uint8List>(
+              future: loadAssetBytes,
+              builder: (_, snapshot) {
+                if (snapshot.connectionState == ConnectionState.active || snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return const Center(child: Text('An error has occurred'));
+                }
+
+                return _ButterFlyAssetVideo(image: snapshot.data!);
+              }
+            ),
           ],
         ),
       ),
@@ -48,6 +80,10 @@ class _App extends StatelessWidget {
 }
 
 class _ButterFlyAssetVideo extends StatefulWidget {
+  final Uint8List image;
+
+  const _ButterFlyAssetVideo({required this.image});
+
   @override
   _ButterFlyAssetVideoState createState() => _ButterFlyAssetVideoState();
 }
@@ -58,7 +94,14 @@ class _ButterFlyAssetVideoState extends State<_ButterFlyAssetVideo> {
   @override
   void initState() {
     super.initState();
-    _controller = MiniController.asset('assets/Butterfly-209.mp4');
+    _controller = MiniController.asset(
+      'assets/Butterfly-209.mp4',
+      metadata: VideoMetadata(
+        title: 'With asset',
+        subtitle: 'thumbnail',
+        thumbnailBytes: widget.image,
+      ),
+    );
 
     _controller.addListener(() {
       setState(() {});
@@ -115,6 +158,11 @@ class _BumbleBeeRemoteVideoState extends State<_BumbleBeeRemoteVideo> {
     super.initState();
     _controller = MiniController.network(
       'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+      metadata: const VideoMetadata(
+        title: 'From Dart', 
+        subtitle: 'to Android',
+        thumbnailUri: 'https://target.scene7.com/is/image/Target/GUEST_02ea766d-006c-4ae7-a099-b40c6aaeffbd?wid=488&hei=488&fmt=pjpeg',
+      ),
     );
 
     _controller.addListener(() {

@@ -7,6 +7,9 @@ package io.flutter.plugins.videoplayer;
 import android.content.Context;
 import android.os.Build;
 import android.util.LongSparseArray;
+
+import androidx.annotation.NonNull;
+
 import io.flutter.FlutterInjector;
 import io.flutter.Log;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
@@ -122,6 +125,16 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
         new EventChannel(
             flutterState.binaryMessenger, "flutter.io/videoPlayer/videoEvents" + handle.id());
 
+    VideoMetadata metadata = null;
+    if (arg.getMetadata() != null) {
+      metadata = new VideoMetadata.Builder()
+              .setTitle(arg.getMetadata().getTitle())
+              .setSubtitle(arg.getMetadata().getSubtitle())
+              .setThumbnailUri(arg.getMetadata().getThumbnailUri())
+              .setThumbnailBytes(arg.getMetadata().getThumbnailBytes())
+              .build();
+    }
+
     VideoPlayer player;
     if (arg.getAsset() != null) {
       String assetLookupKey;
@@ -139,7 +152,8 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
               "asset:///" + assetLookupKey,
               null,
               null,
-              options);
+              options,
+              metadata);
     } else {
       @SuppressWarnings("unchecked")
       Map<String, String> httpHeaders = arg.getHttpHeaders();
@@ -151,7 +165,8 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
               arg.getUri(),
               arg.getFormatHint(),
               httpHeaders,
-              options);
+              options,
+              metadata);
     }
     videoPlayers.put(handle.id(), player);
 
@@ -182,6 +197,7 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
 
   public void play(TextureMessage arg) {
     VideoPlayer player = videoPlayers.get(arg.getTextureId());
+    if (player == null) return;
     player.play();
   }
 

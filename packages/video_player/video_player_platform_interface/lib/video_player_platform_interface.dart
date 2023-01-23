@@ -128,6 +128,7 @@ class DataSource {
     this.formatHint,
     this.asset,
     this.package,
+    this.metadata,
     this.httpHeaders = const <String, String>{},
   });
 
@@ -158,6 +159,9 @@ class DataSource {
   /// The package that the asset was loaded from. Only set for
   /// [DataSourceType.asset] videos.
   final String? package;
+
+  /// Extra information about the video
+  final VideoMetadata? metadata;
 }
 
 /// The way in which the video was originally loaded.
@@ -371,4 +375,28 @@ class VideoPlayerOptions {
   /// Note: This option will be silently ignored in the web platform (there is
   /// currently no way to implement this feature in this platform).
   final bool mixWithOthers;
+}
+
+/// Represents the metadata for the current video
+@immutable
+class VideoMetadata {
+  /// Stores the metadata for the current video
+  const VideoMetadata({
+    required this.title,
+    required this.subtitle,
+    this.thumbnailUri,
+    this.thumbnailBytes,
+  });
+  
+  /// The title of the video being played
+  final String title;
+
+  /// The subtitle of the video being played
+  final String subtitle;
+
+  /// An optional uri for the thumbnail of the video being played
+  final String? thumbnailUri;
+
+  /// An optional byte representation of the video thumbnail
+  final Uint8List? thumbnailBytes;
 }

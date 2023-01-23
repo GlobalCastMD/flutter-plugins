@@ -8,27 +8,24 @@ import static com.google.android.exoplayer2.Player.REPEAT_MODE_ALL;
 import static com.google.android.exoplayer2.Player.REPEAT_MODE_OFF;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
+import android.content.Intent;
 import android.net.Uri;
-import android.os.Bundle;
-import android.support.v4.media.MediaDescriptionCompat;
-import android.support.v4.media.MediaMetadataCompat;
-import android.support.v4.media.RatingCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.view.Surface;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
+import androidx.core.app.NotificationCompat;
+
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.MediaMetadata;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.Player.Listener;
+import com.google.android.exoplayer2.SeekParameters;
 import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
 import com.google.android.exoplayer2.source.MediaSource;
@@ -38,7 +35,6 @@ import com.google.android.exoplayer2.source.dash.DefaultDashChunkSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.source.smoothstreaming.DefaultSsChunkSource;
 import com.google.android.exoplayer2.source.smoothstreaming.SsMediaSource;
-import com.google.android.exoplayer2.ui.DefaultMediaDescriptionAdapter;
 import com.google.android.exoplayer2.ui.PlayerNotificationManager;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
@@ -47,8 +43,6 @@ import com.google.android.exoplayer2.util.Util;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.view.TextureRegistry;
 
-import java.io.IOException;
-import java.net.URL;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -89,12 +83,20 @@ final class VideoPlayer {
       String dataSource,
       String formatHint,
       @NonNull Map<String, String> httpHeaders,
-      VideoPlayerOptions options) {
+      VideoPlayerOptions options,
+      VideoMetadata metadata) {
     this.eventChannel = eventChannel;
     this.textureEntry = textureEntry;
     this.options = options;
 
-    ExoPlayer exoPlayer = new ExoPlayer.Builder(context).build();
+    ExoPlayer.Builder exoPlayerBuilder = new ExoPlayer.Builder(context);
+
+    if (metadata != null) {
+      exoPlayerBuilder.setSeekForwardIncrementMs(10000);
+      exoPlayerBuilder.setSeekBackIncrementMs(10000);
+    }
+
+    ExoPlayer exoPlayer = exoPlayerBuilder.build();
 
     Uri uri = Uri.parse(dataSource);
     DataSource.Factory dataSourceFactory;
@@ -118,7 +120,7 @@ final class VideoPlayer {
     exoPlayer.setMediaSource(mediaSource);
     exoPlayer.prepare();
 
-    setUpVideoPlayer(exoPlayer, new QueuingEventSink(), context);
+    setUpVideoPlayer(exoPlayer, new QueuingEventSink(), context, metadata);
   }
 
   // Constructor used to directly test members of this class.
@@ -133,7 +135,7 @@ final class VideoPlayer {
     this.textureEntry = textureEntry;
     this.options = options;
 
-    setUpVideoPlayer(exoPlayer, eventSink, null);
+    setUpVideoPlayer(exoPlayer, eventSink, null, null);
   }
 
   private static boolean isHTTP(Uri uri) {
@@ -192,7 +194,7 @@ final class VideoPlayer {
     }
   }
 
-  private void setUpVideoPlayer(ExoPlayer exoPlayer, QueuingEventSink eventSink, @Nullable Context context) {
+  private void setUpVideoPlayer(ExoPlayer exoPlayer, QueuingEventSink eventSink, @Nullable Context context, @Nullable VideoMetadata metadata) {
     this.exoPlayer = exoPlayer;
     this.eventSink = eventSink;
 
@@ -257,46 +259,24 @@ final class VideoPlayer {
           }
         });
 
-    if (context != null) {
+    if (context != null && metadata != null) {
       mediaSession = new MediaSessionCompat(context, "ExoPlayer");
       mediaSession.setActive(true);
       mediaSessionConnector = new MediaSessionConnector(mediaSession);
-//      mediaSessionConnector.setMediaMetadataProvider(new MediaSessionConnector.MediaMetadataProvider() {
-//        @Override
-//        public MediaMetadataCompat getMetadata(Player player) {
-//          MediaMetadataCompat.Builder builder = new MediaMetadataCompat.Builder();
-//          if (player.isPlayingAd()) {
-//            builder.putLong(MediaMetadataCompat.METADATA_KEY_ADVERTISEMENT, 1);
-//          }
-//          builder.putLong(
-//                  MediaMetadataCompat.METADATA_KEY_DURATION,
-//                  player.isCurrentMediaItemDynamic() || player.getDuration() == C.TIME_UNSET
-//                          ? -1
-//                          : player.getDuration());
-//
-////          builder.putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Testing title");
-////          builder.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "test artist");
-//////          try {
-//////            builder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, BitmapFactory.decodeStream(new URL("https://target.scene7.com/is/image/Target/GUEST_02ea766d-006c-4ae7-a099-b40c6aaeffbd?wid=488&hei=488&fmt=pjpeg").openConnection().getInputStream()));
-//////          } catch (IOException e) {
-//////            e.printStackTrace();
-//////          }
-////          builder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, "https://target.scene7.com/is/image/Target/GUEST_02ea766d-006c-4ae7-a099-b40c6aaeffbd?wid=488&hei=488&fmt=pjpeg");
-////          builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, "https://target.scene7.com/is/image/Target/GUEST_02ea766d-006c-4ae7-a099-b40c6aaeffbd?wid=488&hei=488&fmt=pjpeg");
-//
-//          return builder.build();
-//        }
-//      });
       mediaSessionConnector.setPlayer(this.exoPlayer);
 
       PlayerNotificationManager.Builder playerNotificationManagerBuilder = new PlayerNotificationManager.Builder(
               context, MEDIA_NOTIFICATION_ID, MEDIA_NOTIFICATION_CHANNEL_ID);
       playerNotificationManagerBuilder.setMediaDescriptionAdapter(
-        new MediaDescriptionAdapter(context, null) // TODO pass in information passed from Dart (including bitmap info)
+        new MediaDescriptionAdapter(context, metadata)
       );
       playerNotificationManagerBuilder.setChannelNameResourceId(R.string.media_notification_channel_name);
       playerNotificationManagerBuilder.setChannelDescriptionResourceId(R.string.media_notification_channel_description);
 
+      playerNotificationManagerBuilder.setPauseActionIconResourceId(R.drawable.ic_pause);
+      playerNotificationManagerBuilder.setPlayActionIconResourceId(R.drawable.ic_play_arrow);
+      playerNotificationManagerBuilder.setRewindActionIconResourceId(R.drawable.ic_replay_10);
+      playerNotificationManagerBuilder.setFastForwardActionIconResourceId(R.drawable.ic_forward_10);
 
       playerNotificationManager = playerNotificationManagerBuilder.build();
 
@@ -414,10 +394,14 @@ final class VideoPlayer {
       surface.release();
     }
     if (exoPlayer != null) {
-      playerNotificationManager.setPlayer(null);
-      mediaSessionConnector.setPlayer(null);
-      mediaSession.setActive(false);
-      mediaSession.release();
+      if (playerNotificationManager != null)
+        playerNotificationManager.setPlayer(null);
+      if (mediaSessionConnector != null)
+        mediaSessionConnector.setPlayer(null);
+      if (mediaSession != null) {
+        mediaSession.setActive(false);
+        mediaSession.release();
+      }
       exoPlayer.release();
     }
   }

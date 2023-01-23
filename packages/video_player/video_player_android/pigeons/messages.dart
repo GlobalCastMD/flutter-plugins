@@ -48,12 +48,24 @@ class CreateMessage {
   String? uri;
   String? packageName;
   String? formatHint;
+  ControlsMetadata? metadata;
   Map<String?, String?> httpHeaders;
 }
 
 class MixWithOthersMessage {
   MixWithOthersMessage(this.mixWithOthers);
   bool mixWithOthers;
+}
+
+class ControlsMetadata {
+  ControlsMetadata({
+    required this.title, 
+    required this.subtitle,
+  });
+  String title;
+  String subtitle;
+  String? thumbnailUri;
+  Uint8List? thumbnailBytes;
 }
 
 @HostApi(dartHostTestHandler: 'TestHostVideoPlayerApi')

@@ -74,6 +74,9 @@ class FakeController extends ValueNotifier<VideoPlayerValue>
   VideoPlayerOptions? get videoPlayerOptions => null;
 
   @override
+  VideoMetadata? get metadata => null;
+
+  @override
   void setCaptionOffset(Duration delay) {}
 
   @override
