@@ -149,8 +149,6 @@ static void *playbackBufferFullContext = &playbackBufferFullContext;
     [p seekToTime:kCMTimeZero completionHandler:^void (BOOL finished) {
       NSMutableDictionary *npi = [[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
       npi[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(CMTimeGetSeconds(p.currentTime));
-        printf("looping back\n");
-        CFShow((__bridge CFTypeRef)(npi));
       [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = npi;
     }];
       
@@ -358,8 +356,6 @@ NS_INLINE UIViewController *rootViewController() {
         }
 
         nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = @(durationInSeconds);
-            printf("status context\n");
-              CFShow((__bridge CFTypeRef)(nowPlayingInfo));
         center.nowPlayingInfo = nowPlayingInfo;
         
         break;
@@ -387,8 +383,6 @@ NS_INLINE UIViewController *rootViewController() {
       }
 
       nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = @(durationInSeconds);
-        printf("presentationSize or duration context\n");
-          CFShow((__bridge CFTypeRef)(nowPlayingInfo));
       center.nowPlayingInfo = nowPlayingInfo;
     }
   } else if (context == playbackLikelyToKeepUpContext) {
@@ -502,8 +496,6 @@ NS_INLINE UIViewController *rootViewController() {
       
     NSMutableDictionary *npi = [[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
     npi[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(CMTimeGetSeconds([_player currentTime]));
-      printf("updating remote controls\n");
-      CFShow((__bridge CFTypeRef)(npi)); // TODO remove
     [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = npi;
       
   } else {
@@ -522,6 +514,14 @@ NS_INLINE UIViewController *rootViewController() {
       nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(CMTimeGetSeconds([_player currentTime]));
   } else {
     nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @0;
+  }
+    
+  UIImage *defaultArtwork = [UIImage imageNamed:@"AppIcon"];
+  if (defaultArtwork) {
+    MPMediaItemArtwork *mpArt = [[MPMediaItemArtwork alloc] initWithBoundsSize:defaultArtwork.size requestHandler:^UIImage* _Nonnull(CGSize size) {
+      return defaultArtwork;
+    } ];
+    nowPlayingInfo[MPMediaItemPropertyArtwork] = mpArt;
   }
     
   if (@available(iOS 10.0, *)) {
@@ -548,7 +548,6 @@ NS_INLINE UIViewController *rootViewController() {
             } ];
             NSMutableDictionary *npi = [[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
             npi[MPMediaItemPropertyArtwork] = mpArt;
-              printf("updating remote art\n");
             [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = npi;
           }
                 
@@ -557,8 +556,6 @@ NS_INLINE UIViewController *rootViewController() {
     }
   }
     
-    printf("setting up info center\n");
-    CFShow((__bridge CFTypeRef)(nowPlayingInfo));
   [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = nowPlayingInfo;
     
 }
@@ -884,8 +881,6 @@ NS_INLINE UIViewController *rootViewController() {
   [player setPlaybackSpeed:input.speed.doubleValue];
   NSMutableDictionary *npi = [[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
   npi[MPNowPlayingInfoPropertyPlaybackRate] = input.speed;
-    printf("update playback speed\n");
-    CFShow((__bridge CFTypeRef)(npi));
   [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = npi;
 }
 
