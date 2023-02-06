@@ -5,6 +5,7 @@
 #import "FLTVideoPlayerPlugin.h"
 
 #import <AVFoundation/AVFoundation.h>
+#import <MediaPlayer/MediaPlayer.h>
 #import <GLKit/GLKit.h>
 
 #import "AVAssetTrackUtils.h"
@@ -33,6 +34,33 @@
 }
 @end
 
+@interface FLTVideoMetadata : NSObject
+/// `init` unavailable to enforce nonnull fields, see the `make` class method.
+- (instancetype)init NS_UNAVAILABLE;
++ (instancetype)makeWithTitle:(NSString *)title
+    subtitle:(NSString *)subtitle
+    thumbnailUri:(nullable NSString *)thumbnailUri
+    thumbnailBytes:(nullable FlutterStandardTypedData *)thumbnailBytes;
+@property(nonatomic, copy) NSString * title;
+@property(nonatomic, copy) NSString * subtitle;
+@property(nonatomic, copy, nullable) NSString * thumbnailUri;
+@property(nonatomic, strong, nullable) FlutterStandardTypedData * thumbnailBytes;
+@end
+
+@implementation FLTVideoMetadata
++ (instancetype)makeWithTitle:(NSString *)title
+    subtitle:(NSString *)subtitle
+    thumbnailUri:(nullable NSString *)thumbnailUri
+    thumbnailBytes:(nullable FlutterStandardTypedData *)thumbnailBytes {
+  FLTVideoMetadata* metadata = [[FLTVideoMetadata alloc] init];
+  metadata.title = title;
+  metadata.subtitle = subtitle;
+  metadata.thumbnailUri = thumbnailUri;
+  metadata.thumbnailBytes = thumbnailBytes;
+  return metadata;
+}
+@end
+
 @interface FLTVideoPlayer : NSObject <FlutterTexture, FlutterStreamHandler>
 @property(readonly, nonatomic) AVPlayer *player;
 @property(readonly, nonatomic) AVPlayerItemVideoOutput *videoOutput;
@@ -50,9 +78,17 @@
 @property(nonatomic, readonly) BOOL isPlaying;
 @property(nonatomic) BOOL isLooping;
 @property(nonatomic, readonly) BOOL isInitialized;
+@property(nonatomic, strong, nullable) FLTVideoMetadata *metadata;
+@property(nonatomic, nullable) id togglePlayPauseTarget;
+@property(nonatomic, nullable) id playTarget;
+@property(nonatomic, nullable) id pauseTarget;
+@property(nonatomic, nullable) id skipBackwardTarget;
+@property(nonatomic, nullable) id skipForwardTarget;
+@property(nonatomic, nullable) id seekBarTarget;
 - (instancetype)initWithURL:(NSURL *)url
                frameUpdater:(FLTFrameUpdater *)frameUpdater
-                httpHeaders:(nonnull NSDictionary<NSString *, NSString *> *)headers;
+                httpHeaders:(nonnull NSDictionary<NSString *, NSString *> *)headers
+                metadata:(nullable FLTVideoMetadata *)metadata;
 @end
 
 static void *timeRangeContext = &timeRangeContext;
@@ -64,9 +100,9 @@ static void *playbackBufferEmptyContext = &playbackBufferEmptyContext;
 static void *playbackBufferFullContext = &playbackBufferFullContext;
 
 @implementation FLTVideoPlayer
-- (instancetype)initWithAsset:(NSString *)asset frameUpdater:(FLTFrameUpdater *)frameUpdater {
+- (instancetype)initWithAsset:(NSString *)asset frameUpdater:(FLTFrameUpdater *)frameUpdater metadata:(nullable FLTVideoMetadata *)metadata {
   NSString *path = [[NSBundle mainBundle] pathForResource:asset ofType:nil];
-  return [self initWithURL:[NSURL fileURLWithPath:path] frameUpdater:frameUpdater httpHeaders:@{}];
+  return [self initWithURL:[NSURL fileURLWithPath:path] frameUpdater:frameUpdater httpHeaders:@{} metadata:metadata];
 }
 
 - (void)addObservers:(AVPlayerItem *)item {
@@ -98,6 +134,7 @@ static void *playbackBufferFullContext = &playbackBufferFullContext;
          forKeyPath:@"playbackBufferFull"
             options:NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew
             context:playbackBufferFullContext];
+    
 
   // Add an observer that will respond to itemDidPlayToEndTime
   [[NSNotificationCenter defaultCenter] addObserver:self
@@ -109,7 +146,15 @@ static void *playbackBufferFullContext = &playbackBufferFullContext;
 - (void)itemDidPlayToEndTime:(NSNotification *)notification {
   if (_isLooping) {
     AVPlayerItem *p = [notification object];
-    [p seekToTime:kCMTimeZero completionHandler:nil];
+    [p seekToTime:kCMTimeZero completionHandler:^void (BOOL finished) {
+      NSMutableDictionary *npi = [[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
+      npi[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(CMTimeGetSeconds(p.currentTime));
+        printf("looping back\n");
+        CFShow((__bridge CFTypeRef)(npi));
+      [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = npi;
+    }];
+      
+    
   } else {
     if (_eventSink) {
       _eventSink(@{@"event" : @"completed"});
@@ -195,18 +240,20 @@ NS_INLINE UIViewController *rootViewController() {
 
 - (instancetype)initWithURL:(NSURL *)url
                frameUpdater:(FLTFrameUpdater *)frameUpdater
-                httpHeaders:(nonnull NSDictionary<NSString *, NSString *> *)headers {
+                httpHeaders:(nonnull NSDictionary<NSString *, NSString *> *)headers
+                metadata:(nullable FLTVideoMetadata *)metadata {
   NSDictionary<NSString *, id> *options = nil;
   if ([headers count] != 0) {
     options = @{@"AVURLAssetHTTPHeaderFieldsKey" : headers};
   }
   AVURLAsset *urlAsset = [AVURLAsset URLAssetWithURL:url options:options];
   AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:urlAsset];
-  return [self initWithPlayerItem:item frameUpdater:frameUpdater];
+    return [self initWithPlayerItem:item frameUpdater:frameUpdater metadata:metadata];
 }
 
 - (instancetype)initWithPlayerItem:(AVPlayerItem *)item
-                      frameUpdater:(FLTFrameUpdater *)frameUpdater {
+                      frameUpdater:(FLTFrameUpdater *)frameUpdater
+                      metadata:(nullable FLTVideoMetadata *)metadata {
   self = [super init];
   NSAssert(self, @"super init cannot be nil");
 
@@ -254,6 +301,11 @@ NS_INLINE UIViewController *rootViewController() {
 
   [self addObservers:item];
 
+  if (metadata) {
+    _metadata = metadata;
+    [self initBackgroundControls];
+  }
+
   [asset loadValuesAsynchronouslyForKeys:@[ @"tracks" ] completionHandler:assetCompletionHandler];
 
   return self;
@@ -291,6 +343,25 @@ NS_INLINE UIViewController *rootViewController() {
         [item addOutput:_videoOutput];
         [self setupEventSinkIfReadyToPlay];
         [self updatePlayingState];
+            
+        MPNowPlayingInfoCenter *center = [MPNowPlayingInfoCenter defaultCenter];
+        NSMutableDictionary *nowPlayingInfo = [center.nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
+
+        CMTime duration = item.duration;
+        Float64 durationInSeconds = CMTimeGetSeconds(duration);
+        if (CMTIME_IS_INDEFINITE(duration)) {
+          durationInSeconds = 0.0;
+
+          if (@available(iOS 10.0, *)) {
+              nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = @YES;
+          }
+        }
+
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = @(durationInSeconds);
+            printf("status context\n");
+              CFShow((__bridge CFTypeRef)(nowPlayingInfo));
+        center.nowPlayingInfo = nowPlayingInfo;
+        
         break;
     }
   } else if (context == presentationSizeContext || context == durationContext) {
@@ -301,6 +372,24 @@ NS_INLINE UIViewController *rootViewController() {
       // all required properties and instantiate the event sink if it is not already set up.
       [self setupEventSinkIfReadyToPlay];
       [self updatePlayingState];
+        
+      MPNowPlayingInfoCenter *center = [MPNowPlayingInfoCenter defaultCenter];
+      NSMutableDictionary *nowPlayingInfo = [center.nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
+
+      CMTime duration = item.duration;
+      Float64 durationInSeconds = CMTimeGetSeconds(duration);
+      if (CMTIME_IS_INDEFINITE(duration)) {
+        durationInSeconds = 0.0;
+
+        if (@available(iOS 10.0, *)) {
+          nowPlayingInfo[MPNowPlayingInfoPropertyIsLiveStream] = @YES;
+        }
+      }
+
+      nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = @(durationInSeconds);
+        printf("presentationSize or duration context\n");
+          CFShow((__bridge CFTypeRef)(nowPlayingInfo));
+      center.nowPlayingInfo = nowPlayingInfo;
     }
   } else if (context == playbackLikelyToKeepUpContext) {
     if ([[_player currentItem] isPlaybackLikelyToKeepUp]) {
@@ -320,6 +409,70 @@ NS_INLINE UIViewController *rootViewController() {
   }
 }
 
+- (void)initBackgroundControls {
+  if (!_metadata) {
+    return;
+  }
+  MPRemoteCommandCenter *commandCenter = [MPRemoteCommandCenter sharedCommandCenter];
+    
+  _togglePlayPauseTarget = [commandCenter.togglePlayPauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
+    if (self->_isPlaying) {
+      [self pause];
+    } else {
+      [self play];
+    }
+    return MPRemoteCommandHandlerStatusSuccess;
+  } ];
+
+  _pauseTarget = [commandCenter.pauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
+    if (self->_isPlaying) {
+      [self pause];
+      return MPRemoteCommandHandlerStatusSuccess;
+    } else {
+      return MPRemoteCommandHandlerStatusCommandFailed;
+    }
+  } ];
+
+  _playTarget = [commandCenter.playCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
+    if (!self->_isPlaying) {
+      [self play];
+      return MPRemoteCommandHandlerStatusSuccess;
+    } else {
+      return MPRemoteCommandHandlerStatusCommandFailed;
+    }
+  } ];
+
+  _skipForwardTarget = [commandCenter.skipForwardCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
+    int64_t position = [self position];
+    [self seekTo:(position + 10000)];
+    return MPRemoteCommandHandlerStatusSuccess;
+  } ];
+  commandCenter.skipForwardCommand.preferredIntervals = @[@10];
+  commandCenter.skipForwardCommand.enabled = YES;
+
+  _skipBackwardTarget = [commandCenter.skipBackwardCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
+    int64_t position = [self position];
+    [self seekTo:(position - 10000)];
+    return MPRemoteCommandHandlerStatusSuccess;
+  } ];
+  commandCenter.skipBackwardCommand.preferredIntervals = @[@10];
+  commandCenter.skipBackwardCommand.enabled = YES;
+
+  if (@available(iOS 9.1, *)) {
+    commandCenter.changePlaybackPositionCommand.enabled = YES;
+    _seekBarTarget = [commandCenter.changePlaybackPositionCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
+      if ([event isKindOfClass:[MPChangePlaybackPositionCommandEvent class]]) {
+        MPChangePlaybackPositionCommandEvent *e = (MPChangePlaybackPositionCommandEvent *)event;
+        CMTime seekTime = CMTimeMakeWithSeconds(e.positionTime, 1000000);
+        [self.player seekToTime:seekTime];
+        [self updateRemoteControls];
+      }
+      return MPRemoteCommandHandlerStatusSuccess;
+    } ];
+  }
+
+}
+
 - (void)updatePlayingState {
   if (!_isInitialized) {
     return;
@@ -329,7 +482,85 @@ NS_INLINE UIViewController *rootViewController() {
   } else {
     [_player pause];
   }
+  [self updateRemoteControls];
   _displayLink.paused = !_isPlaying;
+}
+
+- (void)updateRemoteControls {
+  if (!_metadata) {
+    return;
+  }
+
+  MPRemoteCommandCenter *commandCenter = [MPRemoteCommandCenter sharedCommandCenter];
+
+  if (_player.currentItem) {
+    if (_isPlaying) {
+      commandCenter.playCommand.enabled = NO;
+    } else {
+      commandCenter.playCommand.enabled = YES;
+    }
+      
+    NSMutableDictionary *npi = [[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
+    npi[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(CMTimeGetSeconds([_player currentTime]));
+      printf("updating remote controls\n");
+      CFShow((__bridge CFTypeRef)(npi)); // TODO remove
+    [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = npi;
+      
+  } else {
+    [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = @{};
+  }
+}
+
+- (void)updateNowPlayingInfoCenter {
+  NSMutableDictionary *nowPlayingInfo = [[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
+      
+  nowPlayingInfo[MPMediaItemPropertyTitle] = self.metadata.title;
+  nowPlayingInfo[MPMediaItemPropertyArtist] = self.metadata.subtitle;
+    
+  if (_player) {
+    nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = @(_player.rate);
+      nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(CMTimeGetSeconds([_player currentTime]));
+  } else {
+    nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @0;
+  }
+    
+  if (@available(iOS 10.0, *)) {
+    if (self.metadata.thumbnailBytes && self.metadata.thumbnailBytes.data) {
+      UIImage *artwork = [[UIImage alloc] initWithData:self.metadata.thumbnailBytes.data];
+      if (artwork) {
+        MPMediaItemArtwork *mpArt = [[MPMediaItemArtwork alloc] initWithBoundsSize:artwork.size requestHandler:^UIImage* _Nonnull(CGSize size) {
+          return artwork;
+        } ];
+        nowPlayingInfo[MPMediaItemPropertyArtwork] = mpArt;
+      }
+          
+    } else if (self.metadata.thumbnailUri && [self.metadata.thumbnailUri length] > 0) {
+      NSURL *url = [[NSURL alloc] initWithString:self.metadata.thumbnailUri];
+      if (url) {
+        [[[NSURLSession sharedSession] dataTaskWithURL:url
+                                    completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+          if (!data) return;
+                
+          UIImage *artwork = [[UIImage alloc] initWithData:data];
+          if (artwork) {
+            MPMediaItemArtwork *mpArt = [[MPMediaItemArtwork alloc] initWithBoundsSize:artwork.size requestHandler:^UIImage* _Nonnull(CGSize size) {
+              return artwork;
+            } ];
+            NSMutableDictionary *npi = [[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
+            npi[MPMediaItemPropertyArtwork] = mpArt;
+              printf("updating remote art\n");
+            [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = npi;
+          }
+                
+        } ] resume];
+      }
+    }
+  }
+    
+    printf("setting up info center\n");
+    CFShow((__bridge CFTypeRef)(nowPlayingInfo));
+  [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = nowPlayingInfo;
+    
 }
 
 - (void)setupEventSinkIfReadyToPlay {
@@ -385,6 +616,7 @@ NS_INLINE UIViewController *rootViewController() {
 - (void)play {
   _isPlaying = YES;
   [self updatePlayingState];
+  [self updateNowPlayingInfoCenter];
 }
 
 - (void)pause {
@@ -493,6 +725,22 @@ NS_INLINE UIViewController *rootViewController() {
   [currentItem removeObserver:self forKeyPath:@"playbackBufferFull"];
 
   [self.player replaceCurrentItemWithPlayerItem:nil];
+  [self updateRemoteControls];
+  MPRemoteCommandCenter *commandCenter = [MPRemoteCommandCenter sharedCommandCenter];
+  [commandCenter.togglePlayPauseCommand removeTarget:_togglePlayPauseTarget];
+  _togglePlayPauseTarget = nil;
+  [commandCenter.playCommand removeTarget:_playTarget];
+  _playTarget = nil;
+  [commandCenter.pauseCommand removeTarget:_pauseTarget];
+  _pauseTarget = nil;
+  [commandCenter.skipForwardCommand removeTarget:_skipForwardTarget];
+  _skipForwardTarget = nil;
+  [commandCenter.skipBackwardCommand removeTarget:_skipBackwardTarget];
+  _skipBackwardTarget = nil;
+  if (@available(iOS 10.0, *)) {
+    [commandCenter.changePlaybackPositionCommand removeTarget:_seekBarTarget];
+    _seekBarTarget = nil;
+  }
   [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
@@ -566,6 +814,17 @@ NS_INLINE UIViewController *rootViewController() {
 
 - (FLTTextureMessage *)create:(FLTCreateMessage *)input error:(FlutterError **)error {
   FLTFrameUpdater *frameUpdater = [[FLTFrameUpdater alloc] initWithRegistry:_registry];
+
+  FLTVideoMetadata *metadata;
+  if (input.metadata) {
+    metadata = [FLTVideoMetadata makeWithTitle:input.metadata.title
+                                  subtitle:input.metadata.subtitle
+                                  thumbnailUri:input.metadata.thumbnailUri
+                                  thumbnailBytes:input.metadata.thumbnailBytes];
+  } else {
+    metadata = NULL;
+  }
+
   FLTVideoPlayer *player;
   if (input.asset) {
     NSString *assetPath;
@@ -574,12 +833,13 @@ NS_INLINE UIViewController *rootViewController() {
     } else {
       assetPath = [_registrar lookupKeyForAsset:input.asset];
     }
-    player = [[FLTVideoPlayer alloc] initWithAsset:assetPath frameUpdater:frameUpdater];
+    player = [[FLTVideoPlayer alloc] initWithAsset:assetPath frameUpdater:frameUpdater metadata:metadata];
     return [self onPlayerSetup:player frameUpdater:frameUpdater];
   } else if (input.uri) {
     player = [[FLTVideoPlayer alloc] initWithURL:[NSURL URLWithString:input.uri]
                                     frameUpdater:frameUpdater
-                                     httpHeaders:input.httpHeaders];
+                                    httpHeaders:input.httpHeaders
+                                    metadata:metadata];
     return [self onPlayerSetup:player frameUpdater:frameUpdater];
   } else {
     *error = [FlutterError errorWithCode:@"video_player" message:@"not implemented" details:nil];
@@ -622,6 +882,11 @@ NS_INLINE UIViewController *rootViewController() {
 - (void)setPlaybackSpeed:(FLTPlaybackSpeedMessage *)input error:(FlutterError **)error {
   FLTVideoPlayer *player = self.playersByTextureId[input.textureId];
   [player setPlaybackSpeed:input.speed.doubleValue];
+  NSMutableDictionary *npi = [[MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo mutableCopy] ?: [[NSMutableDictionary alloc] init];
+  npi[MPNowPlayingInfoPropertyPlaybackRate] = input.speed;
+    printf("update playback speed\n");
+    CFShow((__bridge CFTypeRef)(npi));
+  [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = npi;
 }
 
 - (void)play:(FLTTextureMessage *)input error:(FlutterError **)error {

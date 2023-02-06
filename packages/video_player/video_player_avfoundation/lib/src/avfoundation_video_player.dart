@@ -54,12 +54,24 @@ class AVFoundationVideoPlayer extends VideoPlayerPlatform {
         uri = dataSource.uri;
         break;
     }
+
+    ControlsMetadata? metadata;
+    if (dataSource.metadata != null) {
+      metadata = ControlsMetadata(
+        title: dataSource.metadata!.title, 
+        subtitle: dataSource.metadata!.subtitle,
+        thumbnailUri: dataSource.metadata!.thumbnailUri,
+        thumbnailBytes: dataSource.metadata!.thumbnailBytes,
+      );
+    }
+
     final CreateMessage message = CreateMessage(
       asset: asset,
       packageName: packageName,
       uri: uri,
       httpHeaders: httpHeaders,
       formatHint: formatHint,
+      metadata: metadata,
     );
 
     final TextureMessage response = await _api.create(message);
