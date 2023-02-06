@@ -10,7 +10,9 @@ dependencies:
     sdk: flutter
   js: ^0.6.0
   video_player_platform_interface:
-    path: ../../video_player_platform_interface/
+    git:
+      url: https://github.com/GlobalCastMD/flutter-plugins.git
+      path: packages/video_player/video_player_platform_interface/
   video_player_web:
     path: ../
 
