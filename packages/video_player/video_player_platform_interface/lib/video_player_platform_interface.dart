@@ -213,9 +213,11 @@ class VideoEvent {
   VideoEvent({
     required this.eventType,
     this.duration,
+    this.position,
     this.size,
     this.rotationCorrection,
     this.buffered,
+    this.isPlaying,
   });
 
   /// The type of the event.
@@ -225,6 +227,11 @@ class VideoEvent {
   ///
   /// Only used if [eventType] is [VideoEventType.initialized].
   final Duration? duration;
+
+  /// Position of the video.
+  ///
+  /// Only used if [eventType] is [VideoEventType.remotePlaybackUpdate].
+  final Duration? position;
 
   /// Size of the video.
   ///
@@ -241,6 +248,11 @@ class VideoEvent {
   /// Only used if [eventType] is [VideoEventType.bufferingUpdate].
   final List<DurationRange>? buffered;
 
+  /// If the video is playing
+  /// 
+  /// Only used if [eventType] is [VideoEventType.remotePlaybackUpdate].
+  final bool? isPlaying;
+
   @override
   bool operator ==(Object other) {
     return identical(this, other) ||
@@ -248,18 +260,22 @@ class VideoEvent {
             runtimeType == other.runtimeType &&
             eventType == other.eventType &&
             duration == other.duration &&
+            position == other.position &&
             size == other.size &&
             rotationCorrection == other.rotationCorrection &&
-            listEquals(buffered, other.buffered);
+            listEquals(buffered, other.buffered) &&
+            isPlaying == other.isPlaying;
   }
 
   @override
   int get hashCode => Object.hash(
         eventType,
         duration,
+        position,
         size,
         rotationCorrection,
         buffered,
+        isPlaying,
       );
 }
 
@@ -282,6 +298,9 @@ enum VideoEventType {
 
   /// The video stopped to buffer.
   bufferingEnd,
+
+  /// The playback was modified by the background controls.
+  remotePlaybackUpdate,
 
   /// An unknown event has been received.
   unknown,
