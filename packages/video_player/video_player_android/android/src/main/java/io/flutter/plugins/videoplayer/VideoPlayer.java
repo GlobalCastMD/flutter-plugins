@@ -275,6 +275,15 @@ final class VideoPlayer {
           }
 
           @Override
+          public void onPlaybackSuppressionReasonChanged(int reason) {
+            Map<String, Object> event = new HashMap<>();
+            event.put("event", "remotePlaybackUpdate");
+            event.put("position", exoPlayer.getContentPosition());
+            event.put("playing", reason != Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS);
+            eventSink.success(event);
+          }
+
+          @Override
           public void onPlayerError(final PlaybackException error) {
             setBuffering(false);
             if (eventSink != null) {
