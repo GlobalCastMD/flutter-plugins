@@ -141,6 +141,12 @@ static void *playbackBufferFullContext = &playbackBufferFullContext;
                                            selector:@selector(itemDidPlayToEndTime:)
                                                name:AVPlayerItemDidPlayToEndTimeNotification
                                              object:item];
+    
+    // Add an observer that will respond to audio session interruptions
+    [[NSNotificationCenter defaultCenter] addObserver: self
+                                             selector:@selector(audioSessionInterruption:)
+                                                 name:AVAudioSessionInterruptionNotification
+                                               object:[AVAudioSession sharedInstance]];
 }
 
 - (void)itemDidPlayToEndTime:(NSNotification *)notification {
@@ -158,6 +164,50 @@ static void *playbackBufferFullContext = &playbackBufferFullContext;
       _eventSink(@{@"event" : @"completed"});
     }
   }
+}
+
+- (void)audioSessionInterruption:(NSNotification *) notification {
+    NSDictionary *userInfo = notification.userInfo;
+    if (!userInfo) return;
+    
+    NSNumber *ns_typeValue = userInfo[AVAudioSessionInterruptionTypeKey];
+    if (!ns_typeValue) return;
+    
+    int type = [ns_typeValue intValue];
+    
+    switch (type) {
+        case AVAudioSessionInterruptionTypeBegan:
+            self->_eventSink(@{
+              @"event": @"remotePlaybackUpdate",
+              @"position": @((int)round(CMTimeGetSeconds([self->_player currentTime]) * 1000)),
+              @"playing": @(NO)
+            });
+            break;
+            
+        case AVAudioSessionInterruptionTypeEnded: {
+            NSLog(@"interruption ended");
+            NSNumber *optionsValue = userInfo[AVAudioSessionInterruptionOptionKey];
+            if (!optionsValue) break;
+            
+            int options = [optionsValue intValue];
+            NSLog(@"options value: %d", options);
+            
+            if (options == AVAudioSessionInterruptionOptionShouldResume) {
+                [self play];
+                self->_eventSink(@{
+                  @"event": @"remotePlaybackUpdate",
+                  @"position": @((int)round(CMTimeGetSeconds([self->_player currentTime]) * 1000)),
+                  @"playing": @(YES)
+                });
+            }
+            
+            break;
+        }
+            
+        default:
+            NSLog(@"default case");
+            break;
+    }
 }
 
 const int64_t TIME_UNSET = -9223372036854775807;
