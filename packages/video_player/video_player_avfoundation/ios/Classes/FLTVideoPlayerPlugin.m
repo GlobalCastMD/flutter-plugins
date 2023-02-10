@@ -185,12 +185,10 @@ static void *playbackBufferFullContext = &playbackBufferFullContext;
             break;
             
         case AVAudioSessionInterruptionTypeEnded: {
-            NSLog(@"interruption ended");
             NSNumber *optionsValue = userInfo[AVAudioSessionInterruptionOptionKey];
             if (!optionsValue) break;
             
             int options = [optionsValue intValue];
-            NSLog(@"options value: %d", options);
             
             if (options == AVAudioSessionInterruptionOptionShouldResume) {
                 [self play];
