@@ -7,6 +7,8 @@ package io.flutter.plugins.videoplayer;
 import static com.google.android.exoplayer2.Player.REPEAT_MODE_ALL;
 import static com.google.android.exoplayer2.Player.REPEAT_MODE_OFF;
 
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -43,6 +45,7 @@ import com.google.android.exoplayer2.util.Util;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.view.TextureRegistry;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -237,7 +240,6 @@ final class VideoPlayer {
               if (!isInitialized) {
                 isInitialized = true;
                 sendInitialized();
-                // TODO create controls notification
               }
             } else if (playbackState == Player.STATE_ENDED) {
               Map<String, Object> event = new HashMap<>();
@@ -247,6 +249,28 @@ final class VideoPlayer {
 
             if (playbackState != Player.STATE_BUFFERING) {
               setBuffering(false);
+            }
+          }
+
+          @Override
+          public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+              Map<String, Object> event = new HashMap<>();
+              event.put("event", "remotePlaybackUpdate");
+              event.put("position", newPosition.positionMs);
+              event.put("playing", exoPlayer.isPlaying());
+              eventSink.success(event);
+            }
+          }
+
+          @Override
+          public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
+                Map<String, Object> event = new HashMap<>();
+                event.put("event", "remotePlaybackUpdate");
+                event.put("position", exoPlayer.getContentPosition());
+                event.put("playing", exoPlayer.isPlaying());
+                eventSink.success(event);
             }
           }
 

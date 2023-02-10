@@ -250,6 +250,12 @@ class MiniController extends ValueNotifier<VideoPlayerValue> {
         case VideoEventType.bufferingEnd:
           value = value.copyWith(isBuffering: false);
           break;
+        case VideoEventType.remotePlaybackUpdate:
+          value = value.copyWith(
+            position: event.position,
+            isPlaying: event.isPlaying,
+          );
+          break;
         case VideoEventType.unknown:
           break;
       }

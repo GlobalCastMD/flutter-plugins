@@ -24,6 +24,7 @@ dependencies:
     git:
       url: https://github.com/GlobalCastMD/flutter-plugins.git
       path: packages/video_player/video_player_platform_interface/
+      ref: '7783180'
 
 dev_dependencies:
   flutter_test:

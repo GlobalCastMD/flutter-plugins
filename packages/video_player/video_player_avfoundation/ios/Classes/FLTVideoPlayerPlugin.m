@@ -415,12 +415,22 @@ NS_INLINE UIViewController *rootViewController() {
     } else {
       [self play];
     }
+    self->_eventSink(@{
+      @"event": @"remotePlaybackUpdate",
+      @"position": @((int)round(CMTimeGetSeconds([self->_player currentTime]) * 1000)),
+      @"playing": @(self->_isPlaying)
+    });
     return MPRemoteCommandHandlerStatusSuccess;
   } ];
 
   _pauseTarget = [commandCenter.pauseCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
     if (self->_isPlaying) {
       [self pause];
+      self->_eventSink(@{
+        @"event": @"remotePlaybackUpdate",
+        @"position": @((int)round(CMTimeGetSeconds([self->_player currentTime]) * 1000)),
+        @"playing": @(YES)
+      });
       return MPRemoteCommandHandlerStatusSuccess;
     } else {
       return MPRemoteCommandHandlerStatusCommandFailed;
@@ -430,6 +440,11 @@ NS_INLINE UIViewController *rootViewController() {
   _playTarget = [commandCenter.playCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
     if (!self->_isPlaying) {
       [self play];
+      self->_eventSink(@{
+        @"event": @"remotePlaybackUpdate",
+        @"position": @((int)round(CMTimeGetSeconds([self->_player currentTime]) * 1000)),
+        @"playing": @(YES)
+      });
       return MPRemoteCommandHandlerStatusSuccess;
     } else {
       return MPRemoteCommandHandlerStatusCommandFailed;
@@ -438,7 +453,13 @@ NS_INLINE UIViewController *rootViewController() {
 
   _skipForwardTarget = [commandCenter.skipForwardCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
     int64_t position = [self position];
-    [self seekTo:(position + 10000)];
+    int seekTime = position + 10000;
+    [self seekTo:seekTime];
+    self->_eventSink(@{
+      @"event": @"remotePlaybackUpdate",
+      @"position": @(seekTime),
+      @"playing": @(self->_isPlaying)
+    });
     return MPRemoteCommandHandlerStatusSuccess;
   } ];
   commandCenter.skipForwardCommand.preferredIntervals = @[@10];
@@ -446,7 +467,13 @@ NS_INLINE UIViewController *rootViewController() {
 
   _skipBackwardTarget = [commandCenter.skipBackwardCommand addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
     int64_t position = [self position];
-    [self seekTo:(position - 10000)];
+    int seekTime = position - 10000;
+    [self seekTo:seekTime];
+    self->_eventSink(@{
+      @"event": @"remotePlaybackUpdate",
+      @"position": @(seekTime),
+      @"playing": @(self->_isPlaying)
+    });
     return MPRemoteCommandHandlerStatusSuccess;
   } ];
   commandCenter.skipBackwardCommand.preferredIntervals = @[@10];
@@ -460,6 +487,11 @@ NS_INLINE UIViewController *rootViewController() {
         CMTime seekTime = CMTimeMakeWithSeconds(e.positionTime, 1000000);
         [self.player seekToTime:seekTime];
         [self updateRemoteControls];
+        self->_eventSink(@{
+          @"event": @"remotePlaybackUpdate",
+          @"position": @((int)round(CMTimeGetSeconds(seekTime) * 1000)),
+          @"playing": @(self->_isPlaying)
+        });
       }
       return MPRemoteCommandHandlerStatusSuccess;
     } ];
@@ -531,7 +563,7 @@ NS_INLINE UIViewController *rootViewController() {
         MPMediaItemArtwork *mpArt = [[MPMediaItemArtwork alloc] initWithBoundsSize:artwork.size requestHandler:^UIImage* _Nonnull(CGSize size) {
           return artwork;
         } ];
-        nowPlayingInfo[MPMediaItemPropertyArtwork] = mpArt;
+        nowPlayingInfo[MPMediaItemPropertyArtwork]  = mpArt;
       }
           
     } else if (self.metadata.thumbnailUri && [self.metadata.thumbnailUri length] > 0) {
