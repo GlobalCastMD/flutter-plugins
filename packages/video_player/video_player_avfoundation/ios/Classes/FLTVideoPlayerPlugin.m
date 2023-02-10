@@ -429,7 +429,7 @@ NS_INLINE UIViewController *rootViewController() {
       self->_eventSink(@{
         @"event": @"remotePlaybackUpdate",
         @"position": @((int)round(CMTimeGetSeconds([self->_player currentTime]) * 1000)),
-        @"playing": @(YES)
+        @"playing": @(NO)
       });
       return MPRemoteCommandHandlerStatusSuccess;
     } else {
